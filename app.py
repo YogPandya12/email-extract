@@ -32,30 +32,72 @@ def find_url_column(columns):
             return col
     return None
 
+# def extract_emails_from_url(url):
+#     """Fetch emails from the given URL with better error handling."""
+#     if pd.isna(url) or not isinstance(url, str):
+#         return ""
+    
+#     if not url.startswith(('http://', 'https://')):
+#         url = f"http://{url}"
+    
+#     try:
+#         response = requests.get(url, timeout=10)
+#         response.raise_for_status()
+#         soup = BeautifulSoup(response.text, 'html.parser')
+        
+#         text = ' '.join(soup.stripped_strings)
+        
+#         raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+        
+#         valid_emails = [email for email in raw_emails if not email[0].isdigit()]
+        
+#         return ', '.join(set(valid_emails)) if valid_emails else "No email ID found"
+#     except requests.exceptions.RequestException:
+#         return "URL not working"
+#     except Exception as e:
+#         return f"Error: {str(e)}"
+
 def extract_emails_from_url(url):
-    """Fetch emails from the given URL with better error handling."""
+    """Fetch emails from the given URL and explore potential internal links for emails."""
     if pd.isna(url) or not isinstance(url, str):
         return ""
     
     if not url.startswith(('http://', 'https://')):
         url = f"http://{url}"
     
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        text = ' '.join(soup.stripped_strings)
-        
-        raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
-        
-        valid_emails = [email for email in raw_emails if not email[0].isdigit()]
-        
-        return ', '.join(set(valid_emails)) if valid_emails else "No email ID found"
-    except requests.exceptions.RequestException:
-        return "URL not working"
-    except Exception as e:
-        return f"Error: {str(e)}"
+    visited_urls = set()  
+    emails = set()
+
+    def fetch_emails(current_url):
+        if current_url in visited_urls:
+            return
+        visited_urls.add(current_url)
+        try:
+            response = requests.get(current_url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            text = ' '.join(soup.stripped_strings)
+            raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+            emails.update([email for email in raw_emails if not email[0].isdigit()])
+            
+            # Find links to explore further
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                if 'contact' in href.lower() or 'about' in href.lower():
+                    
+                    full_url = requests.compat.urljoin(current_url, href)
+                    if full_url.startswith(('http://', 'https://')):
+                        fetch_emails(full_url)
+        except requests.exceptions.RequestException:
+            return "URL not working"
+        except Exception as e:
+            print(f"Error processing {current_url}: {e}")
+            return f"Error: {str(e)}"
+
+    fetch_emails(url)
+    return ', '.join(emails) if emails else "No email ID found"
+
 
 def get_optimal_workers(file_size):
     """Return optimal number of workers based on the file size."""
