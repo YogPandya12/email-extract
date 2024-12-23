@@ -23,7 +23,7 @@ function uploadFile(event) {
     })
     .then(blob => {
         const originalFileName = fileInput.files[0].name; 
-        const processedFileName = `processed_${originalFileName}`; 
+        const processedFileName = `${originalFileName}`; 
 
         const downloadLink = document.createElement('a');
         const url = window.URL.createObjectURL(blob);
