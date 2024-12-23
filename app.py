@@ -57,47 +57,113 @@ def find_url_column(columns):
 #     except Exception as e:
 #         return f"Error: {str(e)}"
 
+# def extract_emails_from_url(url):
+#     """Fetch emails from the given URL and explore potential internal links for emails."""
+#     if pd.isna(url) or not isinstance(url, str):
+#         return ""
+    
+#     if not url.startswith(('http://', 'https://')):
+#         url = f"http://{url}"
+    
+#     visited_urls = set()  
+#     emails = set()
+
+#     # Keywords to look for in links
+#     keywords = ['contact', 'about', 'contact us', 'about us', 'get in touch', 'reach us','communication']
+
+#     def fetch_emails(current_url):
+#         if current_url in visited_urls:
+#             return
+#         visited_urls.add(current_url)
+#         try:
+#             response = requests.get(current_url, timeout=10)
+#             response.raise_for_status()
+#             soup = BeautifulSoup(response.text, 'html.parser')
+            
+#             # Extract emails from the current page
+#             text = ' '.join(soup.stripped_strings)
+#             raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+#             emails.update([email for email in raw_emails if not email[0].isdigit()])
+            
+#             # Find links to explore further
+#             for link in soup.find_all('a', href=True):
+#                 href = link['href']
+#                 lower_href = href.lower()
+#                 if any(keyword in lower_href for keyword in keywords):
+#                     full_url = requests.compat.urljoin(current_url, href)
+#                     if full_url.startswith(('http://', 'https://')):
+#                         fetch_emails(full_url)
+#         except requests.exceptions.RequestException:
+#             return "URL not working"
+#         except Exception as e:
+#             print(f"Error processing {current_url}: {e}")
+#             return f"Error: {str(e)}"
+
+#     fetch_emails(url)
+#     return ', '.join(emails) if emails else "No email ID found"
+
 def extract_emails_from_url(url):
     """Fetch emails from the given URL and explore potential internal links for emails."""
     if pd.isna(url) or not isinstance(url, str):
         return ""
-    
+    print("CKPT1: Starting URL Processing")
     if not url.startswith(('http://', 'https://')):
         url = f"http://{url}"
-    
-    visited_urls = set()  
+    print(f"CKPT2: Final URL -> {url}")
+    visited_urls = set()
     emails = set()
-
+    print("CKPT3: Initialization Complete")
+    # Keywords to look for in links
+    keywords = ['contact', 'about', 'get in touch', 'reach us', 'communication']
+    
     def fetch_emails(current_url):
         if current_url in visited_urls:
+            print(f"Skipping already visited URL: {current_url}")
             return
         visited_urls.add(current_url)
+        print(f"CKPT4: Visiting URL -> {current_url}")
         try:
-            response = requests.get(current_url, timeout=10)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
+            }
+            response = requests.get(current_url, headers=headers, timeout=10)
+            print(f"Response Status Code: {response.status_code}")
             response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
             
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Debugging the content of the page
+            print("Fetched Page Content Length:", len(response.text))
+            
+            # Extract emails from the current page text
             text = ' '.join(soup.stripped_strings)
             raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
             emails.update([email for email in raw_emails if not email[0].isdigit()])
             
+            # Extract emails from mailto links
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                if href.startswith("mailto:"):
+                    email = href.replace("mailto:", "").split("?")[0]  # Extract the email before any query params
+                    if email and not email[0].isdigit():
+                        emails.add(email)
+            
+            print(f"Emails Found on {current_url}: {emails}")
+            
             # Find links to explore further
             for link in soup.find_all('a', href=True):
                 href = link['href']
-                if 'contact' in href.lower() or 'about' in href.lower():
-                    
+                lower_href = href.lower()
+                if any(keyword in lower_href for keyword in keywords):
                     full_url = requests.compat.urljoin(current_url, href)
                     if full_url.startswith(('http://', 'https://')):
                         fetch_emails(full_url)
-        except requests.exceptions.RequestException:
-            return "URL not working"
+        except requests.exceptions.RequestException as e:
+            print(f"RequestException for {current_url}: {e}")
         except Exception as e:
             print(f"Error processing {current_url}: {e}")
-            return f"Error: {str(e)}"
 
     fetch_emails(url)
     return ', '.join(emails) if emails else "No email ID found"
-
 
 def get_optimal_workers(file_size):
     """Return optimal number of workers based on the file size."""
@@ -149,7 +215,7 @@ def process_file():
         output.seek(0)
 
         original_filename = file.filename
-        processed_filename = f"processed_{original_filename}"
+        processed_filename = f"{original_filename}"
 
         # app.logger.info('File sent back')
         return send_file(output, as_attachment=True, download_name=processed_filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
