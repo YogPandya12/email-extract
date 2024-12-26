@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 import logging
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urlparse, urljoin
 
 # project_root = '/home/jobnearby/getemails.hcuboidtech.com/'
 # template_path = os.path.join(project_root, '/templates')
@@ -24,6 +25,30 @@ application = app
 #     level=logging.DEBUG, 
 #     format='%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
 # )
+
+# from deep_translator import GoogleTranslator
+
+
+# def translate_keywords(keywords, target_language='en'):
+#     """Translate a list of keywords to the target language."""
+#     translated = []
+#     for keyword in keywords:
+#         try:
+#             translated.append(GoogleTranslator(source='auto', target=target_language).translate(keyword))
+#         except Exception as e:
+#             print(f"Error translating '{keyword}': {e}")
+#             translated.append(keyword)  # Fallback to the original keyword
+#     return translated
+
+# from langdetect import detect
+
+# def detect_language(text):
+#     """Detect the language of the given text."""
+#     try:
+#         return detect(text)
+#     except:
+#         return "unknown"
+
 
 def find_url_column(columns):
     keywords = ['website', 'url', 'websites', 'urls']
@@ -114,49 +139,52 @@ def extract_emails_from_url(url):
     emails = set()
     print("CKPT3: Initialization Complete")
     # Keywords to look for in links
-    keywords = ['contact', 'about', 'get in touch', 'reach us', 'communication']
+    keywords = ['contact', 'about', 'get in touch', 'reach us', 'communication','contacts','about the company','contact us']
+    
+    base_domain = urlparse(url).netloc
+
+    def is_internal_link(link):
+        """Check if a link belongs to the same domain."""
+        return urlparse(link).netloc == base_domain or urlparse(link).netloc == ""
     
     def fetch_emails(current_url):
         if current_url in visited_urls:
-            print(f"Skipping already visited URL: {current_url}")
             return
         visited_urls.add(current_url)
-        print(f"CKPT4: Visiting URL -> {current_url}")
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
             }
             response = requests.get(current_url, headers=headers, timeout=10)
-            print(f"Response Status Code: {response.status_code}")
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            # Debugging the content of the page
-            print("Fetched Page Content Length:", len(response.text))
             
             # Extract emails from the current page text
             text = ' '.join(soup.stripped_strings)
             raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
             emails.update([email for email in raw_emails if not email[0].isdigit()])
             
+            # Detect the language of the page
+            # detected_language = detect_language(text)
+            
+            # # Translate keywords to the detected language
+            # translated_keywords = translate_keywords(keywords, target_language=detected_language)
+            
             # Extract emails from mailto links
             for link in soup.find_all('a', href=True):
                 href = link['href']
                 if href.startswith("mailto:"):
-                    email = href.replace("mailto:", "").split("?")[0]  # Extract the email before any query params
+                    email = href.replace("mailto:", "").split("?")[0]
                     if email and not email[0].isdigit():
                         emails.add(email)
             
-            print(f"Emails Found on {current_url}: {emails}")
-            
-            # Find links to explore further
+            # Find and process internal links
             for link in soup.find_all('a', href=True):
                 href = link['href']
-                lower_href = href.lower()
-                if any(keyword in lower_href for keyword in keywords):
-                    full_url = requests.compat.urljoin(current_url, href)
-                    if full_url.startswith(('http://', 'https://')):
-                        fetch_emails(full_url)
+                full_url = urljoin(current_url, href)
+                if is_internal_link(full_url) and any(keyword in href.lower() for keyword in keywords):
+                    fetch_emails(full_url)
         except requests.exceptions.RequestException as e:
             print(f"RequestException for {current_url}: {e}")
         except Exception as e:
