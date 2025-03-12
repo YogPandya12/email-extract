@@ -229,15 +229,22 @@ def find_subpage_urls(soup, base_url):
     return subpage_urls
 
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
 
 def js_render_with_session(url, headers, timeout=30):
     try:
         chrome_options = Options()
         chrome_options.add_argument("--headless")  # Run in headless mode
         chrome_options.add_argument(f"user-agent={headers['User-Agent']}")
-        driver = webdriver.Chrome(options=chrome_options)  # Add executable_path if ChromeDriver not in PATH
+        chrome_options.add_argument("--no-sandbox")  # Required for Docker
+        chrome_options.add_argument("--disable-dev-shm-usage")  # Avoid shared memory issues
+        
+        # Automatically download and use the correct ChromeDriver version
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
         driver.set_page_load_timeout(timeout)
         driver.get(url)
         time.sleep(3)  # Wait for JS to load
